@@ -64,14 +64,14 @@ impl Action for Duck {
                     .map_err(|err| Error::Respond(SyncFailure::new(err)))
                     .from_err();
 
-                Box::new(future)
+                return Box::new(future);
             }
 
             // Build the search URL
             let url = format!("{}{}", URL, urlencoding::encode(&input));
 
             // Build the response string
-            let response = format!("<a href=\"{}\">{}</a>", url, htmlescape::encode_minimal(input));
+            let response = format!("<a href=\"{}\">{}</a>", url, htmlescape::encode_minimal(&input));
 
             // Build a future for sending the response message
             let future = state
