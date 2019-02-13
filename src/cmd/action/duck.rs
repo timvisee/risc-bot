@@ -71,7 +71,7 @@ impl Action for Duck {
             let url = format!("{}{}", URL, urlencoding::encode(&input));
 
             // Build the response string
-            let response = format!("<a href="{}">{}</a>", url, htmlescape::encode_minimal(input));
+            let response = format!("<a href=\"{}\">{}</a>", url, htmlescape::encode_minimal(input));
 
             // Build a future for sending the response message
             let future = state
