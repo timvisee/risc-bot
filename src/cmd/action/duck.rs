@@ -61,7 +61,7 @@ impl Action for Duck {
             if input.is_empty() {
                 // Build a message future for sending the response
                 let future = state
-                    .telegram_send(msg.text_reply("Search using [DuckDuckGo](https://duckduckgo.com/).\n\nPlease provide a search query, such as:\n`/duck Telegram`\n`/duck !w Telegram app`").parse_mode(ParseMode::Markdown))
+                    .telegram_send(msg.text_reply("Search using [DuckDuckGo](https://duckduckgo.com/).\n\nPlease provide a search query, such as:\n`/duck Telegram`\n`/duck !w Telegram app`").parse_mode(ParseMode::Markdown).disable_preview())
                     .map(|_| ())
                     .map_err(|err| Error::Respond(SyncFailure::new(err)))
                     .from_err();
