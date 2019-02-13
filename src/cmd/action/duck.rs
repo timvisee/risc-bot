@@ -15,7 +15,7 @@ use state::State;
 const CMD: &'static str = "duck";
 
 /// Whether the action is hidden.
-const HIDDEN: bool = true;
+const HIDDEN: bool = false;
 
 /// The action help.
 const HELP: &'static str = "Create DuckDuckGo search URL";
@@ -69,15 +69,13 @@ impl Action for Duck {
                 return Box::new(future);
             }
 
-            // Build the search URL
+            // Build the search URL, build the response
             let url = format!("{}{}", URL, urlencoding::encode(&input));
-
-            // Build the response string
             let response = format!("<a href=\"{}\">{}</a>", url, htmlescape::encode_minimal(&input));
 
             // Build a future for sending the response message
             let future = state
-                .telegram_send(msg.text_reply(input).parse_mode(ParseMode::Html))
+                .telegram_send(msg.text_reply(response).parse_mode(ParseMode::Html))
                 .map(|_| ())
                 .map_err(|err| Error::Respond(SyncFailure::new(err)))
                 .from_err();
