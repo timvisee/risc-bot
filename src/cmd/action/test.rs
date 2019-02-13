@@ -45,7 +45,8 @@ impl Action for Test {
             .telegram_send(
                 msg.text_reply("<i>Jep... works on my machine!</i>")
                     .parse_mode(ParseMode::Html),
-            ).map(|_| ())
+            )
+            .map(|_| ())
             .map_err(|err| Error::Respond(SyncFailure::new(err)))
             .from_err();
 

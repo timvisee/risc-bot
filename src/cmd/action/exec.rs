@@ -73,23 +73,27 @@ impl Exec {
                 // Append the line to the captured output
                 status_output.lock().unwrap().append_line(&line);
                 Ok(())
-            }).and_then(move |status| {
+            })
+            .and_then(move |status| {
                 // Set the exit status
                 status_exit.lock().unwrap().set_status(status);
                 ok(())
-            }).map_err(|err| Error::Execute(err));
+            })
+            .map_err(|err| Error::Execute(err));
 
             // Set up an interval for constantly updating the status
             let status_update = status.clone();
             Interval::new(
                 Instant::now() + Duration::from_millis(1000),
                 Duration::from_millis(1000),
-            ).map_err(|err| Error::Throttle(err))
+            )
+            .map_err(|err| Error::Throttle(err))
             .for_each(move |_| {
                 // Update the status on Telegram, throttled
                 status_update.lock().unwrap().update_throttled();
                 Ok(())
-            }).select(cmd)
+            })
+            .select(cmd)
             .map_err(|(err, _)| err)
             .and_then(move |_| {
                 // Update one final time, to ensure all status is sent to Telegram
@@ -138,8 +142,10 @@ impl Action for Exec {
                              For example:\n\
                              `/exec echo Hello!`\
                              ",
-                        ).parse_mode(ParseMode::Markdown),
-                    ).map(|_| ())
+                        )
+                        .parse_mode(ParseMode::Markdown),
+                    )
+                    .map(|_| ())
                     .map_err(|err| Error::Help(SyncFailure::new(err)))
                     .from_err();
 
@@ -208,7 +214,8 @@ impl ExecStatus {
             .telegram_send(
                 msg.text_reply("<i>Executing command...</i>")
                     .parse_mode(ParseMode::Html),
-            ).map_err(|err| -> FailureError { SyncFailure::new(err).into() })
+            )
+            .map_err(|err| -> FailureError { SyncFailure::new(err).into() })
             .map_err(|err| Error::StatusMessage(err.compat()))
             .and_then(|msg| {
                 if let Some(msg) = msg {

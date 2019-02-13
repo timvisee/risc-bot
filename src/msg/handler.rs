@@ -73,7 +73,8 @@ impl Handler {
                     .expect("failed to extract r from REDDIT_REGEX")
                     .as_str()
                     .to_owned()
-            }).collect();
+            })
+            .collect();
         reddits.sort_unstable();
         reddits.dedup();
 
@@ -95,7 +96,8 @@ impl Handler {
                     msg.text_reply(reddits.join("\n"))
                         .parse_mode(ParseMode::Markdown)
                         .disable_notification(),
-                ).map(|_| ())
+                )
+                .map(|_| ())
                 .map_err(|err| Error::HandleReddit(SyncFailure::new(err))),
         )
     }
@@ -108,8 +110,10 @@ impl Handler {
                 msg.text_reply(format!(
                     "`BLEEP BLOOP`\n`I AM A BOT`\n\n{}, direct messages are not supported yet.",
                     msg.from.first_name,
-                )).parse_mode(ParseMode::Markdown),
-            ).map(|_| ())
+                ))
+                .parse_mode(ParseMode::Markdown),
+            )
+            .map(|_| ())
             .map_err(|err| Error::HandlePrivate(SyncFailure::new(err)))
     }
 }

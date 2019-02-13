@@ -69,8 +69,10 @@ impl Action for All {
                 msg.text_reply(format!(
                     "*Attention!* [{}](tg://user?id={}) mentions #all users.\n{}",
                     msg.from.first_name, msg.from.id, mentions,
-                )).parse_mode(ParseMode::Markdown),
-            ).map(|_| ())
+                ))
+                .parse_mode(ParseMode::Markdown),
+            )
+            .map(|_| ())
             .map_err(|err| Error::Respond(SyncFailure::new(err)))
             .from_err();
 

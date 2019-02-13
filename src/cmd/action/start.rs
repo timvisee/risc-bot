@@ -67,8 +67,10 @@ impl Action for Start {
                         ",
                     msg.from.first_name,
                     build_help_list(),
-                )).parse_mode(ParseMode::Markdown),
-            ).map(|_| ())
+                ))
+                .parse_mode(ParseMode::Markdown),
+            )
+            .map(|_| ())
             .map_err(|err| Error::Respond(SyncFailure::new(err)))
             .from_err();
 

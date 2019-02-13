@@ -65,14 +65,16 @@ impl Action for Stats {
                     edits,
                 ),
                 _ => (user.to_owned(), messages, edits),
-            }).enumerate()
+            })
+            .enumerate()
             .map(|(i, (name, messages, edits))| {
                 if *edits > 0 {
                     format!("{}. {}: _{} ({})_", i + 1, name, messages, edits)
                 } else {
                     format!("{}. {}: _{}_", i + 1, name, messages)
                 }
-            }).collect();
+            })
+            .collect();
         response += &totals.join("\n");
 
         // Append the user specifics if available
@@ -86,7 +88,8 @@ impl Action for Stats {
                     } else {
                         format!("{}s: _{}_", ucfirst(kind.name()), messages)
                     }
-                }).collect();
+                })
+                .collect();
             response += &specific.join("\n");
         }
 
@@ -107,7 +110,8 @@ impl Action for Stats {
                 msg.text_reply(response)
                     .parse_mode(ParseMode::Markdown)
                     .disable_preview(),
-            ).map(|_| ())
+            )
+            .map(|_| ())
             .map_err(|err| Error::Respond(SyncFailure::new(err)))
             .from_err();
 
@@ -144,5 +148,6 @@ fn ucfirst(string: &str) -> String {
             } else {
                 Some(c)
             }
-        }).collect()
+        })
+        .collect()
 }

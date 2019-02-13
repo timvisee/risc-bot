@@ -256,7 +256,8 @@ impl Stats {
                     chat_user_stats::dsl::messages
                         .eq(chat_user_stats::dsl::messages + messages as i32),
                     chat_user_stats::dsl::edits.eq(chat_user_stats::dsl::edits + edits as i32),
-                )).execute(connection)
+                ))
+                .execute(connection)
                 .map(|_| ()),
             Err(DieselError::NotFound) => {
                 diesel::insert_into(chat_user_stats::dsl::chat_user_stats)
@@ -266,7 +267,8 @@ impl Stats {
                         chat_user_stats::dsl::message_type.eq(message_type.id()),
                         chat_user_stats::dsl::messages.eq(messages as i32),
                         chat_user_stats::dsl::edits.eq(edits as i32),
-                    )).execute(connection)
+                    ))
+                    .execute(connection)
                     .map(|_| ())
             }
             err => err.map(|_| ()),
@@ -298,7 +300,8 @@ impl Stats {
                     message_type,
                     messages,
                     edits,
-                )).filter(chat_id.eq(selected_chat.to_i64()))
+                ))
+                .filter(chat_id.eq(selected_chat.to_i64()))
                 .load(connection)?;
 
         // Build a hashmap of user totals, add database and queue stats
@@ -382,11 +385,13 @@ impl Stats {
                     (
                         match first {
                             Some(ref first) if !first.is_empty() => first.to_owned(),
-                            _ => if let Some(user_username) = &user_username {
-                                user_username.to_owned()
-                            } else {
-                                format!("{}", user)
-                            },
+                            _ => {
+                                if let Some(user_username) = &user_username {
+                                    user_username.to_owned()
+                                } else {
+                                    format!("{}", user)
+                                }
+                            }
                         },
                         user,
                         user_username,
@@ -394,7 +399,8 @@ impl Stats {
                         num_edits,
                     )
                 },
-            ).collect();
+            )
+            .collect();
         user_totals.sort_unstable_by(|a, b| (b.3 + b.4).cmp(&(a.3 + a.4)));
 
         // Build a sorted list of user specifics for easier reporting
@@ -532,11 +538,13 @@ impl StatsKind {
 
         // Determine the stats kind based on the message kind
         match &message.kind {
-            MessageKind::Text { data, .. } => if data.trim_left().starts_with('/') {
-                Some(StatsKind::Command)
-            } else {
-                Some(StatsKind::Text)
-            },
+            MessageKind::Text { data, .. } => {
+                if data.trim_left().starts_with('/') {
+                    Some(StatsKind::Command)
+                } else {
+                    Some(StatsKind::Text)
+                }
+            }
             MessageKind::Audio { .. } => Some(StatsKind::Audio),
             MessageKind::Document { data, .. } => {
                 // If the MIME type is a gif, it must be a GIF

@@ -29,7 +29,8 @@ pub fn _print_error<E: Fail>(err: impl Borrow<E>) {
             } else {
                 eprintln!("{} {}", _highlight_error("caused by:"), err);
             }
-        }).count();
+        })
+        .count();
 
     // Fall back to a basic message
     if count == 0 {
@@ -65,7 +66,8 @@ pub fn format_error<E: Fail>(err: impl Borrow<E>) -> String {
             } else {
                 format!("*caused by:* _{}_", err)
             }
-        }).collect();
+        })
+        .collect();
 
     // Append the errors to the message, or fall back
     if !errors.is_empty() {
@@ -89,5 +91,6 @@ pub fn handle_msg_error<E: Fail>(
         .telegram_send(
             msg.text_reply(format_error(err))
                 .parse_mode(ParseMode::Markdown),
-        ).map(|_| ())
+        )
+        .map(|_| ())
 }

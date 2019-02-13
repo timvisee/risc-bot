@@ -48,7 +48,8 @@ impl Action for Help {
             .telegram_send(
                 msg.text_reply(format!("*RISC commands:*\n{}", cmd_list,))
                     .parse_mode(ParseMode::Markdown),
-            ).map(|_| ())
+            )
+            .map(|_| ())
             .map_err(|err| Error::Respond(SyncFailure::new(err)))
             .from_err();
 

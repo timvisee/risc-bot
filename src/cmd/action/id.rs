@@ -701,7 +701,8 @@ impl Action for Id {
             .telegram_send(
                 msg.text_reply("_Gathering facts..._")
                     .parse_mode(ParseMode::Markdown),
-            ).map_err(|err| -> FailureError { SyncFailure::new(err).into() })
+            )
+            .map_err(|err| -> FailureError { SyncFailure::new(err).into() })
             .map_err(|err| Error::GatherFacts(err.compat()))
             .and_then(|msg_answer| {
                 if let Some(msg_answer) = msg_answer {
@@ -753,9 +754,11 @@ impl Action for Id {
                             .edit_text(info.join("\n\n"))
                             .parse_mode(ParseMode::Markdown)
                             .disable_preview(),
-                    ).map(|_| ())
+                    )
+                    .map(|_| ())
                     .map_err(|err| Error::Respond(SyncFailure::new(err)))
-            }).from_err();
+            })
+            .from_err();
 
         Box::new(response)
     }

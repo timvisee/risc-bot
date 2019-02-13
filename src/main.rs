@@ -120,7 +120,8 @@ fn build_telegram_handler(state: State, handle: Handle) -> impl Future<Item = ()
             }
 
             ok(())
-        }).map_err(|err| {
+        })
+        .map_err(|err| {
             eprintln!("ERR: Telegram API updates loop error, ignoring: {}", err);
             ()
         })
@@ -134,5 +135,6 @@ fn build_stats_flusher(state: State, handle: Handle) -> impl Future<Item = (), E
         .for_each(move |_| {
             state.stats().flush(state.db());
             Ok(())
-        }).map_err(|_| ())
+        })
+        .map_err(|_| ())
 }

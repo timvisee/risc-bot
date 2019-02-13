@@ -28,7 +28,8 @@ impl Handler {
                 .map_err(move |err| ActionError::Invoke {
                     cause: err.compat(),
                     name: action.cmd().to_owned(),
-                }).from_err();
+                })
+                .from_err();
 
             Box::new(action_future)
         } else {

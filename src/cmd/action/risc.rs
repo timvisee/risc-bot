@@ -55,8 +55,10 @@ impl Action for Risc {
                      https://gitlab.com/timvisee/risc-bot\
                      ",
                     NAME, VERSION,
-                )).parse_mode(ParseMode::Markdown),
-            ).map(|_| ())
+                ))
+                .parse_mode(ParseMode::Markdown),
+            )
+            .map(|_| ())
             .map_err(|err| Error::Respond(SyncFailure::new(err)))
             .from_err();
 

@@ -59,10 +59,11 @@ impl Action for Retweet {
                             .telegram_send(
                                 msg.text_reply(format!("You can't retweet a channel post."))
                                     .parse_mode(ParseMode::Markdown),
-                            ).map(|_| ())
+                            )
+                            .map(|_| ())
                             .map_err(|err| Error::Respond(SyncFailure::new(err)))
                             .from_err(),
-                    )
+                    );
                 }
             },
             None => {
@@ -74,11 +75,13 @@ impl Action for Retweet {
                                  To retweet, you must reply to a message with the `/{}` command.\
                                  ",
                                 CMD,
-                            )).parse_mode(ParseMode::Markdown),
-                        ).map(|_| ())
+                            ))
+                            .parse_mode(ParseMode::Markdown),
+                        )
+                        .map(|_| ())
                         .map_err(|err| Error::Respond(SyncFailure::new(err)))
                         .from_err(),
-                )
+                );
             }
         };
 
@@ -114,8 +117,10 @@ impl Action for Retweet {
                                     "\
                                      <a href=\"tg://user?id={}\">{}</a> <b>RTs:</b> {}",
                                     msg.from.id, msg.from.first_name, retweet_text,
-                                )).parse_mode(ParseMode::Html),
-                        ).map(|_| ())
+                                ))
+                                .parse_mode(ParseMode::Html),
+                        )
+                        .map(|_| ())
                         .map_err(|err| Error::Respond(SyncFailure::new(err)))
                         .from_err(),
                 )
@@ -125,8 +130,10 @@ impl Action for Retweet {
                     .telegram_send(
                         msg.text_reply(format!(
                             "Only text messages can be retweeted at this moment."
-                        )).parse_mode(ParseMode::Markdown),
-                    ).map(|_| ())
+                        ))
+                        .parse_mode(ParseMode::Markdown),
+                    )
+                    .map(|_| ())
                     .map_err(|err| Error::Respond(SyncFailure::new(err)))
                     .from_err(),
             ),
