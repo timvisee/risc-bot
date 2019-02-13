@@ -1,4 +1,5 @@
 pub mod all;
+pub mod duck;
 pub mod echo;
 pub mod echohtml;
 pub mod exec;
@@ -22,14 +23,15 @@ lazy_static! {
     /// This list includes hidden actions which may be filtered using the `.hidden()` propery.
     pub(crate) static ref ACTIONS: Vec<Box<dyn Action + Sync>> = vec![
         Box::new(self::all::All::new()),
+        Box::new(self::duck::Duck::new()),
         Box::new(self::echo::Echo::new()),
         Box::new(self::echohtml::EchoHtml::new()),
         Box::new(self::exec::Exec::new()),
         Box::new(self::help::Help::new()),
         Box::new(self::id::Id::new()),
         Box::new(self::ping::Ping::new()),
-        Box::new(self::risc::Risc::new()),
         Box::new(self::retweet::Retweet::new()),
+        Box::new(self::risc::Risc::new()),
         Box::new(self::start::Start::new()),
         Box::new(self::stats::Stats::new()),
         Box::new(self::test::Test::new()),

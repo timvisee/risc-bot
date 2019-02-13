@@ -13,6 +13,7 @@ extern crate regex;
 extern crate telegram_bot;
 extern crate tokio_core;
 extern crate tokio_signal;
+extern crate urlencoding;
 
 mod app;
 mod cmd;

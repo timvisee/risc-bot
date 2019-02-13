@@ -20,6 +20,7 @@ tokio-io = "0.1"
 tokio-process = "0.2"
 tokio-signal = "0.2"
 tokio-timer = "0.2"
+urlencoding = "1.0"
 
 [dependencies.telegram-bot]
 git = "https://github.com/telegram-rs/telegram-bot"
