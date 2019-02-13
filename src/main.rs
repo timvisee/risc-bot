@@ -5,6 +5,7 @@ extern crate dotenv;
 #[macro_use]
 extern crate failure;
 extern crate futures;
+extern crate htmlescape;
 extern crate humansize;
 extern crate humantime;
 #[macro_use]
