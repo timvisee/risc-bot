@@ -18,7 +18,7 @@ const CMD: &'static str = "duck";
 const HIDDEN: bool = false;
 
 /// The action help.
-const HELP: &'static str = "Create DuckDuckGo search URL";
+const HELP: &'static str = "Search using DuckDuckGo";
 
 /// Base URL, to append the search query to.
 const URL: &'static str = "https://duckduckgo.com/?q=";
@@ -61,7 +61,7 @@ impl Action for Duck {
             if input.is_empty() {
                 // Build a message future for sending the response
                 let future = state
-                    .telegram_send(msg.text_reply("Please provide a search query, such as:\n\n`/duck Telegram`\n`/duck !w Telegram app`").parse_mode(ParseMode::Markdown))
+                    .telegram_send(msg.text_reply("Search using [DuckDuckGo](https://duckduckgo.com/).\n\nPlease provide a search query, such as:\n`/duck Telegram`\n`/duck !w Telegram app`").parse_mode(ParseMode::Markdown))
                     .map(|_| ())
                     .map_err(|err| Error::Respond(SyncFailure::new(err)))
                     .from_err();
