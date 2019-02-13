@@ -1,10 +1,12 @@
 use failure::{Error as FailureError, SyncFailure};
 use futures::{future::ok, Future};
+use htmlescape;
 use telegram_bot::{
     prelude::*,
     types::{Message, MessageKind, ParseMode},
     Error as TelegramError,
 };
+use urlencoding;
 
 use super::Action;
 use state::State;
