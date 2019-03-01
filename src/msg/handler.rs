@@ -10,6 +10,7 @@ use telegram_bot::{
 use cmd::handler::{matches_cmd, Error as CmdHandlerError, Handler as CmdHandler};
 use executor::isolated;
 use state::State;
+use traits::MessageText;
 
 lazy_static! {
     /// A regex for matching messages that contain a Reddit reference.
@@ -132,18 +133,9 @@ impl Handler {
         };
 
         // Get the message text
-        // TODO: clean this up!
-        let reply = if let Some(reply) = &msg.reply_to_message {
-            if let MessageOrChannelPost::Message(ref reply) = **reply {
-                match &reply.kind {
-                    MessageKind::Text { data, .. } => data.clone(),
-                    _ => return None,
-                }
-            } else {
-                return None;
-            }
-        } else {
-            return None;
+        let reply = match msg.reply_to_message.as_ref().and_then(|m| m.text()) {
+            Some(reply) => reply,
+            None => return None,
         };
 
         // Build the sed command to invoke
@@ -160,11 +152,7 @@ impl Handler {
             // TODO: ensure the output is successful
 
             state
-                .telegram_send(
-                    msg.text_reply(&output)
-                        .parse_mode(ParseMode::Markdown)
-                        .disable_notification(),
-                )
+                .telegram_send(msg.text_reply(&output).disable_notification())
                 .map(|_| ())
                 .map_err(|err| SedError::Respond(SyncFailure::new(err)))
         });

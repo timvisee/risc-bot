@@ -24,6 +24,7 @@ mod msg;
 mod schema;
 mod state;
 mod stats;
+pub mod traits;
 mod util;
 
 use std::time::Duration;
