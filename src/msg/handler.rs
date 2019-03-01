@@ -3,7 +3,7 @@ use futures::{future::ok, Future};
 use regex::Regex;
 use telegram_bot::{
     prelude::*,
-    types::{Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode},
+    types::{Message, MessageChat, MessageKind, ParseMode},
     Error as TelegramError,
 };
 
@@ -148,9 +148,13 @@ impl Handler {
 
         // Build the sed future, send the result when done
         let sed_future = isolated::execute_sync(cmd).map_err(|_| SedError::Evaluate);
-        let sed_future = sed_future.and_then(move |(output, status)| {
-            // TODO: ensure the output is successful
+        let sed_future = sed_future.and_then(move |(mut output, status)| {
+            // Prefix an error message on failure
+            if !status.success() {
+                output.insert_str(0, "Failed to evaluate sed expression:\n\n");
+            }
 
+            // Send the response
             state
                 .telegram_send(msg.text_reply(&output).disable_notification())
                 .map(|_| ())
