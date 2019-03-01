@@ -3,11 +3,12 @@ use futures::{future::ok, Future};
 use regex::Regex;
 use telegram_bot::{
     prelude::*,
-    types::{Message, MessageChat, MessageKind, ParseMode},
+    types::{Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode},
     Error as TelegramError,
 };
 
 use cmd::handler::{matches_cmd, Error as CmdHandlerError, Handler as CmdHandler};
+use executor::isolated;
 use state::State;
 
 lazy_static! {
@@ -16,6 +17,11 @@ lazy_static! {
     static ref REDDIT_REGEX: Regex = Regex::new(
         r"(?:^|\s)(?i)/?r/(?P<r>[A-Z0-9_]{1,100})(?:$|\s)",
     ).expect("failed to compile REDDIT_REGEX");
+
+    /// A regex for matching messages that contain sed syntax.
+    static ref SED_REGEX: Regex = Regex::new(
+        r"^\s*(s/.*/.*/)\s*$",
+    ).expect("failed to compile SED_REGEX");
 }
 
 /// The generic message handler.
@@ -44,6 +50,11 @@ impl Handler {
                 // Handle Reddit messages
                 if let Some(future) = Self::handle_reddit(state, data, &msg) {
                     return Box::new(future);
+                }
+
+                // Handle sed messages
+                if let Some(future) = Self::handle_sed(state, data, &msg) {
+                    return Box::new(future.from_err());
                 }
 
                 // Route private messages
@@ -102,6 +113,71 @@ impl Handler {
         )
     }
 
+    /// Handle messages with sed syntax, such as: `s/foo/bar/`
+    /// If the given message doesn't contain a sed-like command `None` is returned.
+    pub fn handle_sed(
+        state: &State,
+        msg_text: &str,
+        msg: &Message,
+    ) -> Option<impl Future<Item = (), Error = SedError>> {
+        // Attempt to collect a sed expression from the message, return None if there is none
+        let expr: String = match SED_REGEX
+            .captures(msg_text)
+            .map(|r| {
+                r.get(1)
+                    .expect("failed to extract sed expr from SED_REGEX")
+                    .as_str()
+                    .to_owned()
+            })
+        {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        // Get the message text
+        // TODO: clean this up!
+        let reply = if let Some(reply) = &msg.reply_to_message {
+            if let MessageOrChannelPost::Message(ref reply) = **reply {
+                match &reply.kind {
+                    MessageKind::Text { data, .. } => data.clone(),
+                    _ => return None,
+                }
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        // Build the sed command to invoke
+        let reply = reply.replace('\\', "\\\\").replace('\'', "\\\'");
+        let cmd = format!("echo '{}' | sed {}", reply, expr);
+
+        // Clone the state and message for in the processing future
+        let state = state.clone();
+        let msg = msg.clone();
+
+        // Build the sed future, send the result when done
+        let sed_future = isolated::execute_sync(cmd)
+            .map_err(|_| SedError::Evaluate);
+        let sed_future = sed_future.and_then(move |(output, status)| {
+
+            // TODO: ensure the output is successful
+
+            state
+                .telegram_send(
+                    msg.text_reply(&output)
+                        .parse_mode(ParseMode::Markdown)
+                        .disable_notification(),
+                )
+                .map(|_| ())
+                .map_err(|err| SedError::Respond(SyncFailure::new(err)))
+
+        });
+
+        Some(sed_future)
+    }
+
     /// Handle the give private/direct message.
     pub fn handle_private(state: &State, msg: &Message) -> impl Future<Item = (), Error = Error> {
         // Send a message to the user
@@ -129,14 +205,35 @@ pub enum Error {
     #[fail(display = "failed to process reddit message")]
     HandleReddit(#[cause] SyncFailure<TelegramError>),
 
+    /// An error occurred while evaluating the sed expression.
+    #[fail(display = "failed to process sed expression")]
+    HandleSed(#[cause] SedError),
+
     /// An error occurred while processing a private message.
     #[fail(display = "failed to process private message")]
     HandlePrivate(#[cause] SyncFailure<TelegramError>),
 }
 
-/// Convert a command handler error into a message handling error.
 impl From<CmdHandlerError> for Error {
     fn from(err: CmdHandlerError) -> Error {
         Error::HandleCmd(err)
     }
+}
+
+impl From<SedError> for Error {
+    fn from(err: SedError) -> Error {
+        Error::HandleSed(err)
+    }
+}
+
+/// A message handler error.
+#[derive(Debug, Fail)]
+pub enum SedError {
+    /// An error occurred while processing a Reddit message.
+    #[fail(display = "failed to evaluate and run sed expression")]
+    Evaluate,
+
+    /// Failed to send the response message
+    #[fail(display = "failed to send sed response")]
+    Respond(#[cause] SyncFailure<TelegramError>),
 }

@@ -1,13 +1,12 @@
 use failure::{Error as FailureError, SyncFailure};
-use futures::{future::ok, Future};
+use futures::Future;
 use regex::Regex;
 use telegram_bot::{
     prelude::*,
-    types::{Message, MessageChat, MessageKind, MessageOrChannelPost, ParseMode},
+    types::{Message, MessageKind, MessageOrChannelPost, ParseMode},
     Error as TelegramError,
 };
 
-use super::help::build_help_list;
 use super::Action;
 use state::State;
 

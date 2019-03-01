@@ -1,4 +1,5 @@
 use std::process::{Command, ExitStatus};
+use std::sync::{Arc, Mutex};
 
 use futures::Future;
 
@@ -39,4 +40,23 @@ where
 
     // Execute the isolated command in the normal environment
     normal::execute(isolated_cmd, output)
+}
+
+/// Execute the given command in a secure isolated environment.
+///
+/// The `stdout` and `stderr` is collected and returned with the future.
+pub fn execute_sync(cmd: String) -> impl Future<Item = (String, ExitStatus), Error = Error> {
+    // Create a sharable buffer
+    let buf = Arc::new(Mutex::new(String::new()));
+    let buf_exec = buf.clone();
+
+    // Execute the sed command, fill the buffer, stringify the buffer and return
+    execute(cmd, move |out| {
+        buf_exec.lock().unwrap().push_str(&out);
+        Ok(())
+    })
+    .map(move |status| {
+        let buf = buf.lock().unwrap().to_owned();
+        (buf, status)
+    })
 }
