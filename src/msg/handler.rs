@@ -20,7 +20,7 @@ lazy_static! {
 
     /// A regex for matching messages that contain sed syntax.
     static ref SED_REGEX: Regex = Regex::new(
-        r"^\s*(s/.*/.*/)\s*$",
+        r"^\s*(s/.*/.*/[a-zA-Z0-9]*)\s*$",
     ).expect("failed to compile SED_REGEX");
 }
 
