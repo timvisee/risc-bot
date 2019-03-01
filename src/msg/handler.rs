@@ -139,7 +139,7 @@ impl Handler {
         };
 
         // Build the sed command to invoke
-        let reply = reply.replace('\\', "\\\\").replace('\'', "\\\'");
+        let reply = reply.replace(' ', "\\ ").replace('\\', "\\\\").replace('\'', "\\\'");
         let cmd = format!("echo '{}' | sed {}", reply, expr);
 
         // Clone the state and message for in the processing future
