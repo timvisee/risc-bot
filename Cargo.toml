@@ -24,10 +24,10 @@ urlencoding = "1.0"
 
 [dependencies.telegram-bot]
 git = "https://github.com/telegram-rs/telegram-bot"
-version ="*"
+version = "*"
 default-features = false
 
 [features]
-default = ["hyper"]
+default = ["curl"]
 hyper = ["telegram-bot/hyper_connector"]
 curl = ["telegram-bot/curl_connector"]
