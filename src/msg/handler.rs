@@ -121,15 +121,12 @@ impl Handler {
         msg: &Message,
     ) -> Option<impl Future<Item = (), Error = SedError>> {
         // Attempt to collect a sed expression from the message, return None if there is none
-        let expr: String = match SED_REGEX
-            .captures(msg_text)
-            .map(|r| {
-                r.get(1)
-                    .expect("failed to extract sed expr from SED_REGEX")
-                    .as_str()
-                    .to_owned()
-            })
-        {
+        let expr: String = match SED_REGEX.captures(msg_text).map(|r| {
+            r.get(1)
+                .expect("failed to extract sed expr from SED_REGEX")
+                .as_str()
+                .to_owned()
+        }) {
             Some(expr) => expr,
             None => return None,
         };
@@ -158,10 +155,8 @@ impl Handler {
         let msg = msg.clone();
 
         // Build the sed future, send the result when done
-        let sed_future = isolated::execute_sync(cmd)
-            .map_err(|_| SedError::Evaluate);
+        let sed_future = isolated::execute_sync(cmd).map_err(|_| SedError::Evaluate);
         let sed_future = sed_future.and_then(move |(output, status)| {
-
             // TODO: ensure the output is successful
 
             state
@@ -172,7 +167,6 @@ impl Handler {
                 )
                 .map(|_| ())
                 .map_err(|err| SedError::Respond(SyncFailure::new(err)))
-
         });
 
         Some(sed_future)
