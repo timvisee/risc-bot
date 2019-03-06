@@ -24,7 +24,8 @@ RUN apt install -yq \
 		php \
 		python \
 		python3 \
-		build-essential
+		build-essential \
+		sudo
 
 # Install Rust, update the cargo package index
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
