@@ -85,7 +85,7 @@ impl Handler {
         // Map the reddits into URLs
         let reddits: Vec<String> = reddits
             .iter()
-            .map(|r| format!("[/r/{}](https://reddit.com/r/{})", r, r))
+            .map(|r| format!("[/r/{}](https://old.reddit.com/r/{})", r, r))
             .collect();
 
         // Send a response
