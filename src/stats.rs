@@ -539,7 +539,7 @@ impl StatsKind {
         // Determine the stats kind based on the message kind
         match &message.kind {
             MessageKind::Text { data, .. } => {
-                if data.trim_left().starts_with('/') {
+                if data.trim_start().starts_with('/') {
                     Some(StatsKind::Command)
                 } else {
                     Some(StatsKind::Text)

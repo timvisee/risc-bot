@@ -47,7 +47,7 @@ impl Action for EchoHtml {
                 .splitn(2, ' ')
                 .skip(1)
                 .next()
-                .map(|cmd| cmd.trim_left())
+                .map(|cmd| cmd.trim_start())
                 .unwrap_or("")
                 .to_owned();
 

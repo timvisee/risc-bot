@@ -52,7 +52,7 @@ impl Action for Duck {
                 .splitn(2, ' ')
                 .skip(1)
                 .next()
-                .map(|cmd| cmd.trim_left())
+                .map(|cmd| cmd.trim_start())
                 .unwrap_or("")
                 .trim()
                 .to_owned();
