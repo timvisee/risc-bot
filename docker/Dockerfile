@@ -25,11 +25,16 @@ RUN apt install -yq \
 		python \
 		python3 \
 		build-essential \
-		sudo
+		sudo \
+        openssl \
+        ca-certificates \
+        cmake \
+        pkg-config \
+        libssl-dev
 
 # Install Rust, update the cargo package index
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
-RUN cargo search ffsend
+RUN cargo install ffsend
 
 # Clean apt but keep the package index alive
 RUN apt clean
