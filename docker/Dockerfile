@@ -26,11 +26,11 @@ RUN apt install -yq \
 		python3 \
 		build-essential \
 		sudo \
-        openssl \
-        ca-certificates \
-        cmake \
-        pkg-config \
-        libssl-dev
+		openssl \
+		ca-certificates \
+		cmake \
+		pkg-config \
+		libssl-dev
 
 # Install Rust, update the cargo package index
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
