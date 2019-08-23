@@ -38,13 +38,13 @@ variables:
   script:
     - cargo check --verbose
     - cargo test --verbose
-rust-stable:
+check-stable:
   <<: *check-base
-rust-beta:
+check-beta:
   <<: *check-base
   variables:
     RUST_VERSION: beta
-rust-nightly:
+check-nightly:
   <<: *check-base
   variables:
     RUST_VERSION: nightly
@@ -52,5 +52,7 @@ rust-nightly:
 # Build using Rust stable
 build:
   stage: build
+  needs:
+    - check-stable
   script:
     - cargo build --release --verbose
