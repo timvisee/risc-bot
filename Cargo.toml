@@ -22,12 +22,8 @@ tokio-signal = "0.2"
 tokio-timer = "0.2"
 urlencoding = "1.0"
 
+# Use a specific version with patched Telegram bot API
 [dependencies.telegram-bot]
-git = "https://github.com/telegram-rs/telegram-bot"
 version = "*"
-default-features = false
-
-[features]
-default = ["curl"]
-hyper = ["telegram-bot/hyper_connector"]
-curl = ["telegram-bot/curl_connector"]
+git = "https://github.com/telegram-rs/telegram-bot"
+rev = "d82b179"

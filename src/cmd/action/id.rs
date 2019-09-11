@@ -112,7 +112,7 @@ impl Id {
 
             // Add source information
             info += &match &forward.from {
-                ForwardFrom::User { user } => format!("\nOriginal user ID: `{}`", user.id,),
+                ForwardFrom::User { user } => format!("\nOriginal user ID: `{}`", user.id),
                 ForwardFrom::Channel {
                     channel,
                     message_id,
@@ -123,6 +123,9 @@ impl Id {
                      ",
                     message_id, channel.id,
                 ),
+                ForwardFrom::ChannelHiddenUser { sender_name } => {
+                    format!("\nOriginal sender name: {}", sender_name)
+                }
             };
         }
 
@@ -172,7 +175,7 @@ impl Id {
 
             // Add source information
             info += &match &forward.from {
-                ForwardFrom::User { user } => format!("\nOriginal user ID: `{}`", user.id,),
+                ForwardFrom::User { user } => format!("\nOriginal user ID: `{}`", user.id),
                 ForwardFrom::Channel {
                     channel,
                     message_id,
@@ -183,6 +186,9 @@ impl Id {
                      ",
                     message_id, channel.id,
                 ),
+                ForwardFrom::ChannelHiddenUser { sender_name } => {
+                    format!("\nOriginal sender name: {}", sender_name)
+                }
             };
         }
 
