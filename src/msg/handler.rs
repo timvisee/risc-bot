@@ -26,7 +26,7 @@ lazy_static! {
 
     /// A regex for matching messages that contain tr syntax.
     static ref TR_REGEX: Regex = Regex::new(
-        r"^\s*tr\s*(.*\s*.*)\s*$",
+        r"^\s*tr\s+(.*\s*.*)\s*$",
     ).expect("failed to compile TR_REGEX");
 }
 
