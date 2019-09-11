@@ -23,6 +23,11 @@ lazy_static! {
     static ref SED_REGEX: Regex = Regex::new(
         r"^\s*([sy]/.*/.*/[a-zA-Z0-9]*)\s*$",
     ).expect("failed to compile SED_REGEX");
+
+    /// A regex for matching messages that contain tr syntax.
+    static ref TR_REGEX: Regex = Regex::new(
+        r"^\s*tr\s*(.*\s*.*)\s*$",
+    ).expect("failed to compile TR_REGEX");
 }
 
 /// The generic message handler.
@@ -55,6 +60,11 @@ impl Handler {
 
                 // Handle sed messages
                 if let Some(future) = Self::handle_sed(state, data, &msg) {
+                    return Box::new(future.from_err());
+                }
+
+                // Handle tr messages
+                if let Some(future) = Self::handle_tr(state, data, &msg) {
                     return Box::new(future.from_err());
                 }
 
@@ -165,6 +175,57 @@ impl Handler {
         Some(sed_future)
     }
 
+    /// Handle messages with tr syntax, such as: `tr a b`
+    /// If the given message doesn't contain a tr-like command `None` is returned.
+    pub fn handle_tr(
+        state: &State,
+        msg_text: &str,
+        msg: &Message,
+    ) -> Option<impl Future<Item = (), Error = TrError>> {
+        // Attempt to collect a tr expression from the message, return None if there is none
+        let expr: String = match TR_REGEX.captures(msg_text).map(|r| {
+            r.get(1)
+                .expect("failed to extract tr expr from TR_REGEX")
+                .as_str()
+                .to_owned()
+        }) {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        // Get the message text
+        let reply = match msg.reply_to_message.as_ref().and_then(|m| m.text()) {
+            Some(reply) => reply,
+            None => return None,
+        };
+
+        // Build the tr command to invoke
+        let expr = expr.replace('\'', "'\"'\"'");
+        let reply = reply.replace('\'', "'\"'\"'");
+        let cmd = format!("echo '{}' | tr {}", reply, expr);
+
+        // Clone the state and message for in the processing future
+        let state = state.clone();
+        let msg = msg.clone();
+
+        // Build the tr future, send the result when done
+        let tr_future = isolated::execute_sync(cmd).map_err(|_| TrError::Evaluate);
+        let tr_future = tr_future.and_then(move |(mut output, status)| {
+            // Prefix an error message on failure
+            if !status.success() {
+                output.insert_str(0, "Failed to evaluate tr expression:\n\n");
+            }
+
+            // Send the response
+            state
+                .telegram_send(msg.text_reply(&output).disable_notification())
+                .map(|_| ())
+                .map_err(|err| TrError::Respond(SyncFailure::new(err)))
+        });
+
+        Some(tr_future)
+    }
+
     /// Handle the give private/direct message.
     pub fn handle_private(state: &State, msg: &Message) -> impl Future<Item = (), Error = Error> {
         // Send a message to the user
@@ -196,6 +257,10 @@ pub enum Error {
     #[fail(display = "failed to process sed expression")]
     HandleSed(#[cause] SedError),
 
+    /// An error occurred while evaluating the tr expression.
+    #[fail(display = "failed to process tr expression")]
+    HandleTr(#[cause] TrError),
+
     /// An error occurred while processing a private message.
     #[fail(display = "failed to process private message")]
     HandlePrivate(#[cause] SyncFailure<TelegramError>),
@@ -213,6 +278,12 @@ impl From<SedError> for Error {
     }
 }
 
+impl From<TrError> for Error {
+    fn from(err: TrError) -> Error {
+        Error::HandleTr(err)
+    }
+}
+
 /// A message handler error.
 #[derive(Debug, Fail)]
 pub enum SedError {
@@ -222,5 +293,17 @@ pub enum SedError {
 
     /// Failed to send the response message
     #[fail(display = "failed to send sed response")]
+    Respond(#[cause] SyncFailure<TelegramError>),
+}
+
+/// A message handler error.
+#[derive(Debug, Fail)]
+pub enum TrError {
+    /// An error occurred while processing a Reddit message.
+    #[fail(display = "failed to evaluate and run tr expression")]
+    Evaluate,
+
+    /// Failed to send the response message
+    #[fail(display = "failed to send tr response")]
     Respond(#[cause] SyncFailure<TelegramError>),
 }
