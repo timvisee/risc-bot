@@ -11,26 +11,30 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN apt update -yq
 RUN apt upgrade -yq
 RUN apt install -yq \
-		git \
-		vim \
-		iputils-ping \
-		iputils-tracepath \
-		wget \
-		curl \
-		cowsay \
-		fortune \
-		toilet \
-		nodejs \
-		php \
-		python \
-		python3 \
 		build-essential \
-		sudo \
-		openssl \
 		ca-certificates \
 		cmake \
+		cowsay \
+		curl \
+		dnsutils \
+		fortune \
+		git \
+		golang \
+		iputils-ping \
+		iputils-tracepath \
+		libssl-dev \
+		nodejs \
+		openssl \
+		php \
 		pkg-config \
-		libssl-dev
+		python \
+		python3 \
+		ruby-full \
+		sudo \
+		toilet \
+		translate-shell \
+		vim \
+		wget 
 
 # Install Rust, update the cargo package index
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
