@@ -1,15 +1,14 @@
-use std::process::{Command, ExitStatus};
+use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
 
-use futures::Future;
-
 use super::{normal, Error};
+use tokio::process::Command;
 
 /// Execute the given command in a secure isolated environment.
 ///
 /// `stdout` and `stderr` is streamed line by line to the `output` closure,
 /// which is called for each line that received.
-pub fn execute<O>(cmd: String, output: O) -> impl Future<Item = ExitStatus, Error = Error>
+pub async fn execute<O>(cmd: String, output: O) -> Result<ExitStatus, Error>
 where
     O: Fn(String) -> Result<(), Error> + Clone + 'static,
 {
@@ -39,24 +38,24 @@ where
         .args(&["bash", "-c", &cmd]);
 
     // Execute the isolated command in the normal environment
-    normal::execute(isolated_cmd, output)
+    normal::execute(isolated_cmd, output).await
 }
 
 /// Execute the given command in a secure isolated environment.
 ///
 /// The `stdout` and `stderr` is collected and returned with the future.
-pub fn execute_sync(cmd: String) -> impl Future<Item = (String, ExitStatus), Error = Error> {
+pub async fn execute_sync(cmd: String) -> Result<(String, ExitStatus), Error> {
     // Create a sharable buffer
     let buf = Arc::new(Mutex::new(String::new()));
     let buf_exec = buf.clone();
 
     // Execute the sed command, fill the buffer, stringify the buffer and return
-    execute(cmd, move |out| {
+    let status = execute(cmd, move |out| {
         buf_exec.lock().unwrap().push_str(&out);
         Ok(())
     })
-    .map(move |status| {
-        let buf = buf.lock().unwrap().to_owned();
-        (buf, status)
-    })
+    .await?;
+
+    let buf = buf.lock().unwrap().to_owned();
+    Ok((buf, status))
 }

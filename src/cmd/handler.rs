@@ -1,10 +1,9 @@
-use futures::{future::ok, Future};
 use regex::Regex;
 use telegram_bot::types::Message;
 
 use super::action::Error as ActionError;
 use super::action::ACTIONS;
-use state::State;
+use crate::state::State;
 
 lazy_static! {
     /// A regex for matching messages that contain a command.
@@ -18,22 +17,19 @@ pub struct Handler;
 
 impl Handler {
     /// Handle the given command.
-    pub fn handle(state: &State, cmd: &str, msg: Message) -> Box<Future<Item = (), Error = Error>> {
+    pub async fn handle(state: State, cmd: &str, msg: Message) -> Result<(), Error> {
         // Invoke the proper action
         let action = ACTIONS.iter().find(|a| a.is_cmd(cmd));
         if let Some(action) = action {
             // Build the action invocation future
-            let action_future = action
-                .invoke(&state, &msg)
-                .map_err(move |err| ActionError::Invoke {
+            action.invoke(state, msg).await.map_err(|err| {
+                Error::Cmd(ActionError::Invoke {
                     cause: err.compat(),
                     name: action.cmd().to_owned(),
                 })
-                .from_err();
-
-            Box::new(action_future)
+            })
         } else {
-            Box::new(ok(()))
+            Ok(())
         }
     }
 }

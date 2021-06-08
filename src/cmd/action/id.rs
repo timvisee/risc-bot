@@ -1,11 +1,10 @@
 use std::time::Duration;
 
+use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use failure::{err_msg, Compat, Error as FailureError, SyncFailure};
-use futures::{
-    future::{err, ok},
-    Future,
-};
+use futures::future;
+use futures::prelude::*;
 use humansize::{file_size_opts, FileSize};
 use humantime::format_duration;
 use telegram_bot::{
@@ -18,16 +17,16 @@ use telegram_bot::{
 };
 
 use super::Action;
-use state::State;
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "id";
+const CMD: &str = "id";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = false;
 
 /// The action help.
-const HELP: &'static str = "Show hidden message/chat details";
+const HELP: &str = "Show hidden message/chat details";
 
 pub struct Id;
 
@@ -126,6 +125,9 @@ impl Id {
                 ForwardFrom::ChannelHiddenUser { sender_name } => {
                     format!("\nOriginal sender name: {}", sender_name)
                 }
+                ForwardFrom::HiddenGroupAdmin { .. } => {
+                    "Original sender: _hidden group admin_".into()
+                }
             };
         }
 
@@ -188,6 +190,9 @@ impl Id {
                 ),
                 ForwardFrom::ChannelHiddenUser { sender_name } => {
                     format!("\nOriginal sender name: {}", sender_name)
+                }
+                ForwardFrom::HiddenGroupAdmin { .. } => {
+                    "Original sender: _hidden group admin_".into()
                 }
             };
         }
@@ -674,6 +679,7 @@ impl Id {
             {
                 String::from("Kind: `pinned message`")
             }
+            MessageKind::Poll { .. } => String::from("Kind: `poll`"),
             MessageKind::Unknown { .. } => String::from("Kind: `?`"),
         }
     }
@@ -684,6 +690,7 @@ impl Id {
     }
 }
 
+#[async_trait]
 impl Action for Id {
     fn cmd(&self) -> &'static str {
         CMD
@@ -697,7 +704,7 @@ impl Action for Id {
         HELP
     }
 
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         // Own the message and global state
         let msg = msg.clone();
         let state = state.clone();
@@ -706,15 +713,16 @@ impl Action for Id {
         let response = state
             .telegram_send(
                 msg.text_reply("_Gathering facts..._")
-                    .parse_mode(ParseMode::Markdown),
+                    .parse_mode(ParseMode::Markdown)
+                    .to_owned(),
             )
             .map_err(|err| -> FailureError { SyncFailure::new(err).into() })
             .map_err(|err| Error::GatherFacts(err.compat()))
             .and_then(|msg_answer| {
                 if let Some(msg_answer) = msg_answer {
-                    ok(msg_answer)
+                    future::ok(msg_answer)
                 } else {
-                    err(Error::GatherFacts(
+                    future::err(Error::GatherFacts(
                         err_msg("failed to gather facts, got empty response from Telegram API")
                             .compat(),
                     ))
@@ -722,9 +730,10 @@ impl Action for Id {
             });
 
         // Build the ID details message and update the answer
-        let response = response
-            .and_then(move |msg_answer| {
+        response
+            .and_then(|msg_answer| {
                 // Build a list of info elements to print in the final message
+                #[allow(clippy::vec_init_then_push)]
                 let mut info = Vec::new();
 
                 // Information about the sender and his message
@@ -740,11 +749,20 @@ impl Action for Id {
                 }
 
                 // Information about the answer message and the chat
-                info.push(Self::build_msg_info(&msg_answer, "This message"));
+                match &msg_answer {
+                    MessageOrChannelPost::Message(msg) => {
+                        Self::build_msg_info(msg, "This message");
+                    }
+                    MessageOrChannelPost::ChannelPost(post) => {
+                        Self::build_channel_post_info(post, "This post");
+                    }
+                }
                 info.push(Self::build_chat_info(&msg.chat, "This chat"));
 
                 // Add information about the bot
-                info.push(Self::build_user_info(&msg_answer.from, "Bot"));
+                if let MessageOrChannelPost::Message(msg) = &msg_answer {
+                    info.push(Self::build_user_info(&msg.from, "Bot"));
+                }
 
                 // Tell a user he may reply to an existing message
                 if msg.reply_to_message.is_none() {
@@ -755,18 +773,18 @@ impl Action for Id {
 
                 // Build a future to update the temporary message with the actual ID response
                 state
-                    .telegram_send(
+                    .telegram_send_message(
                         msg_answer
                             .edit_text(info.join("\n\n"))
                             .parse_mode(ParseMode::Markdown)
-                            .disable_preview(),
+                            .disable_preview()
+                            .to_owned(),
                     )
-                    .map(|_| ())
+                    .map_ok(|_| ())
                     .map_err(|err| Error::Respond(SyncFailure::new(err)))
             })
-            .from_err();
-
-        Box::new(response)
+            .map_err(|err| err.into())
+            .await
     }
 }
 

@@ -1,37 +1,32 @@
-extern crate htmlescape;
-extern crate tokio_timer;
-
 use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
-use state::State;
-
-use self::htmlescape::encode_minimal;
-use self::tokio_timer::{Error as TimerError, Interval};
+use async_trait::async_trait;
 use failure::{err_msg, Compat, Error as FailureError, SyncFailure};
-use futures::{
-    future::{err, ok},
-    Future, Stream,
-};
+use futures::prelude::*;
+use htmlescape::encode_minimal;
 use humantime::format_duration;
 use telegram_bot::{
     prelude::*,
-    types::{Message, MessageKind, ParseMode},
+    types::{Message, MessageKind, MessageOrChannelPost, ParseMode},
     Error as TelegramError,
 };
+use tokio::{pin, time};
+use tokio_stream::wrappers::IntervalStream;
 
 use super::Action;
-use executor::{isolated, Error as ExecutorError};
+use crate::executor::{isolated, Error as ExecutorError};
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "exec";
+const CMD: &str = "exec";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = false;
 
 /// The action help.
-const HELP: &'static str = "Execute a shell command";
+const HELP: &str = "Execute a shell command";
 
 /// The number of characters to truncate the output log at.
 const OUTPUT_TRUNCATE: usize = 4096 - 150;
@@ -53,57 +48,55 @@ impl Exec {
     ///
     /// Send a reply to the given user command `msg`
     /// and timely update it to show the status of the command that was executed.
-    pub fn exec_cmd<'a>(
-        state: &State,
-        cmd: String,
-        msg: &Message,
-    ) -> impl Future<Item = (), Error = Error> {
+    pub async fn exec_cmd<'a>(state: State, cmd: String, msg: &Message) -> Result<(), Error> {
         // Create the status message, and build the executable status object
-        let exec_status = ExecStatus::create_status_msg(state.clone(), msg);
+        let status = ExecStatus::create_status_msg(state.clone(), msg).await?;
 
-        // Build a future for the command execution, and status updating
-        exec_status.and_then(move |status| {
-            // Create an mutexed arc for the status
-            let status = Arc::new(Mutex::new(status));
+        // Create an mutexed arc for the status
+        let status = Arc::new(Mutex::new(status));
 
-            // Execute the command in an isolated environment, process output and the exit code
-            let status_output = status.clone();
-            let status_exit = status.clone();
-            let cmd = isolated::execute(cmd, move |line| {
-                // Append the line to the captured output
-                status_output.lock().unwrap().append_line(&line);
-                Ok(())
-            })
-            .and_then(move |status| {
-                // Set the exit status
-                status_exit.lock().unwrap().set_status(status);
-                ok(())
-            })
-            .map_err(|err| Error::Execute(err));
+        // Execute the command in an isolated environment, process output and the exit code
+        let status_output = status.clone();
+        let status_exit = status.clone();
+        let cmd = isolated::execute(cmd, move |line| {
+            // Append the line to the captured output
+            status_output.lock().unwrap().append_line(&line);
+            Ok(())
+        })
+        .and_then(move |status| {
+            // Set the exit status
+            status_exit.lock().unwrap().set_status(status);
+            future::ok(())
+        })
+        .map_err(Error::Execute);
 
-            // Set up an interval for constantly updating the status
-            let status_update = status.clone();
-            Interval::new(
-                Instant::now() + Duration::from_millis(1000),
-                Duration::from_millis(1000),
-            )
-            .map_err(|err| Error::Throttle(err))
+        // Set up an interval for constantly updating the status
+        let status_update = status.clone();
+        let status_updater = IntervalStream::new(time::interval(Duration::from_millis(1000)))
             .for_each(move |_| {
                 // Update the status on Telegram, throttled
                 status_update.lock().unwrap().update_throttled();
-                Ok(())
+                future::ready(())
             })
-            .select(cmd)
-            .map_err(|(err, _)| err)
-            .and_then(move |_| {
-                // Update one final time, to ensure all status is sent to Telegram
-                status.lock().unwrap().update();
-                ok(())
-            })
-        })
+            .map(|_| Ok(()));
+
+        // Run futures
+        pin!(cmd);
+        future::try_select(status_updater, cmd)
+            .await
+            .map_err(|err| match err {
+                future::Either::Left((e, _)) => e,
+                future::Either::Right((e, _)) => e,
+            })?;
+
+        // Update one final time, to ensure all status is sent to Telegram
+        status.lock().unwrap().update();
+
+        Ok(())
     }
 }
 
+#[async_trait]
 impl Action for Exec {
     fn cmd(&self) -> &'static str {
         CMD
@@ -118,22 +111,21 @@ impl Action for Exec {
     }
 
     // TODO: proper error handling everywhere, pass errors along
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         if let MessageKind::Text { ref data, .. } = &msg.kind {
             // The command to run in the shell
             // TODO: actually properly fetch the command to execute from the full message
             let cmd = data
                 .splitn(2, ' ')
-                .skip(1)
-                .next()
+                .nth(1)
                 .map(|cmd| cmd.trim_start())
                 .unwrap_or("")
                 .to_owned();
 
             // Provide the user with feedback if no command is entered
             if cmd.trim().is_empty() {
-                // Build a future for sending the help message
-                let future = state
+                // Await a future for sending the help message
+                return state
                     .telegram_send(
                         msg.text_reply(
                             "\
@@ -145,20 +137,20 @@ impl Action for Exec {
                         )
                         .parse_mode(ParseMode::Markdown),
                     )
-                    .map(|_| ())
-                    .map_err(|err| Error::Help(SyncFailure::new(err)))
-                    .from_err();
-
-                return Box::new(future);
+                    .map_ok(|_| ())
+                    .map_err(|err| Error::Help(SyncFailure::new(err)).into())
+                    .await;
             }
 
             // Print the command to run
             println!("CMD: {}", cmd);
 
             // Execute the command, report back to the user
-            return Box::new(Self::exec_cmd(state, cmd, msg).from_err());
+            Self::exec_cmd(state, cmd, &msg)
+                .map_err(|err| err.into())
+                .await
         } else {
-            Box::new(ok(()))
+            Ok(())
         }
     }
 }
@@ -199,29 +191,27 @@ pub struct ExecStatus {
 
     /// The status message in a Telegram chat that should be updated to report the executing
     /// status.
-    status_msg: Message,
+    status_msg: MessageOrChannelPost,
 }
 
 impl ExecStatus {
     /// Create a status output message as reply on the given `msg`,
     /// and return an `ExecStatus` for it.
-    pub fn create_status_msg(
-        state: State,
-        msg: &Message,
-    ) -> impl Future<Item = Self, Error = Error> {
+    pub async fn create_status_msg(state: State, msg: &Message) -> Result<Self, Error> {
         // TODO: handle the Telegram errors properly
         state
             .telegram_send(
                 msg.text_reply("<i>Executing command...</i>")
                     .parse_mode(ParseMode::Html),
             )
+            .await
             .map_err(|err| -> FailureError { SyncFailure::new(err).into() })
             .map_err(|err| Error::StatusMessage(err.compat()))
             .and_then(|msg| {
                 if let Some(msg) = msg {
-                    ok(ExecStatus::new(state, msg))
+                    Ok(ExecStatus::new(state, msg))
                 } else {
-                    err(Error::StatusMessage(err_msg(
+                    Err(Error::StatusMessage(err_msg(
                     "failed to send command status message, got empty response from Telegram API",
                 ).compat()))
                 }
@@ -229,7 +219,7 @@ impl ExecStatus {
     }
 
     /// Build a new exec status object with the given status message and the global state.
-    pub fn new(state: State, status_msg: Message) -> Self {
+    pub fn new(state: State, status_msg: MessageOrChannelPost) -> Self {
         ExecStatus {
             output: String::new(),
             status: None,
@@ -319,7 +309,7 @@ impl ExecStatus {
                 status
                     .code()
                     .map(|code| code.to_string())
-                    .unwrap_or("?".into()),
+                    .unwrap_or_else(|| "?".into()),
             ),
             _ => String::new(),
         };
@@ -335,7 +325,7 @@ impl ExecStatus {
         if self.completed() && self.completion_duration.is_some() {
             status_labels.push(format!(
                 "took {}",
-                self.format_duration().unwrap_or("?".into())
+                self.format_duration().unwrap_or_else(|| "?".into())
             ));
         }
         if self.truncating() {
@@ -386,7 +376,8 @@ impl ExecStatus {
         self.state.telegram_spawn(
             self.status_msg
                 .edit_text(self.build_status_msg())
-                .parse_mode(ParseMode::Html),
+                .parse_mode(ParseMode::Html)
+                .to_owned(),
         );
 
         // Reset the changed status
@@ -513,8 +504,4 @@ pub enum Error {
     /// An error occurred while executing the user command.
     #[fail(display = "failed to execute user shell command")]
     Execute(#[cause] ExecutorError),
-
-    /// An error occurred while throttling status update messages.
-    #[fail(display = "failed to throttle status update messages")]
-    Throttle(#[cause] TimerError),
 }

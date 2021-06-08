@@ -4,14 +4,13 @@ use std::borrow::Borrow;
 
 use self::colored::*;
 use failure::Fail;
-use futures::Future;
 use telegram_bot::{
     prelude::*,
     types::{Message, ParseMode},
     Error as TelegramError,
 };
 
-use state::State;
+use crate::state::State;
 
 /// Print the given error in a proper format for the user,
 /// with it's causes.
@@ -23,8 +22,8 @@ pub fn _print_error<E: Fail>(err: impl Borrow<E>) {
         .map(|err| format!("{}", err))
         .filter(|err| !err.is_empty())
         .enumerate()
-        .map(|(i, err)| {
-            if i == 0 {
+        .inspect(|(i, err)| {
+            if *i == 0 {
                 eprintln!("{} {}", _highlight_error("error:"), err);
             } else {
                 eprintln!("{} {}", _highlight_error("caused by:"), err);
@@ -34,11 +33,7 @@ pub fn _print_error<E: Fail>(err: impl Borrow<E>) {
 
     // Fall back to a basic message
     if count == 0 {
-        eprintln!(
-            "{} {}",
-            _highlight_error("error:"),
-            "an undefined error occurred"
-        );
+        eprintln!("{} an undefined error occurred", _highlight_error("error:"),);
     }
 }
 
@@ -82,15 +77,16 @@ pub fn format_error<E: Fail>(err: impl Borrow<E>) -> String {
 /// Handle a message error, by sending the occurred error to the user as a reply on their
 /// message along with it's causes.
 // TODO: create a future for this, delay it for a second to cool down from throttling
-pub fn handle_msg_error<E: Fail>(
+pub async fn handle_msg_error<E: Fail>(
     state: State,
     msg: Message,
     err: impl Borrow<E>,
-) -> impl Future<Item = (), Error = TelegramError> {
+) -> Result<(), TelegramError> {
     state
         .telegram_send(
             msg.text_reply(format_error(err))
                 .parse_mode(ParseMode::Markdown),
         )
+        .await
         .map(|_| ())
 }

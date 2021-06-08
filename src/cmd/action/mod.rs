@@ -12,11 +12,11 @@ pub mod start;
 pub mod stats;
 pub mod test;
 
+use async_trait::async_trait;
 use failure::{Compat, Error as FailureError};
-use futures::Future;
 use telegram_bot::types::Message;
 
-use state::State;
+use crate::state::State;
 
 lazy_static! {
     /// A list of all available and invokable actions.
@@ -38,6 +38,7 @@ lazy_static! {
     ];
 }
 
+#[async_trait]
 pub trait Action {
     /// Get the command name for this action.
     ///
@@ -59,7 +60,7 @@ pub trait Action {
     fn help(&self) -> &'static str;
 
     /// Invoke the action with the given context.
-    fn invoke(&self, state: &State, sg: &Message) -> Box<Future<Item = (), Error = FailureError>>;
+    async fn invoke(&self, state: State, sg: Message) -> Result<(), FailureError>;
 }
 
 /// An action error.

@@ -1,5 +1,6 @@
+use async_trait::async_trait;
 use failure::{Error as FailureError, SyncFailure};
-use futures::{future::ok, Future};
+use futures::prelude::*;
 use telegram_bot::{
     prelude::*,
     types::{Message, MessageChat, MessageKind, ParseMode},
@@ -8,16 +9,16 @@ use telegram_bot::{
 
 use super::help::build_help_list;
 use super::Action;
-use state::State;
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "start";
+const CMD: &str = "start";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = true;
 
 /// The action help.
-const HELP: &'static str = "Start using RISC";
+const HELP: &str = "Start using RISC";
 
 pub struct Start;
 
@@ -27,6 +28,7 @@ impl Start {
     }
 }
 
+#[async_trait]
 impl Action for Start {
     fn cmd(&self) -> &'static str {
         CMD
@@ -40,18 +42,17 @@ impl Action for Start {
         HELP
     }
 
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         // Do not respond in non-private chats
-        match &msg.kind {
-            MessageKind::Text { .. } => match &msg.chat {
+        if let MessageKind::Text { .. } = &msg.kind {
+            match &msg.chat {
                 MessageChat::Private(..) => {}
-                _ => return Box::new(ok(())),
-            },
-            _ => {}
+                _ => return Ok(()),
+            }
         }
 
         // Build a future for sending the response start message
-        let future = state
+        state
             .telegram_send(
                 msg.text_reply(format!(
                     "\
@@ -70,11 +71,9 @@ impl Action for Start {
                 ))
                 .parse_mode(ParseMode::Markdown),
             )
-            .map(|_| ())
-            .map_err(|err| Error::Respond(SyncFailure::new(err)))
-            .from_err();
-
-        Box::new(future)
+            .map_ok(|_| ())
+            .map_err(|err| Error::Respond(SyncFailure::new(err)).into())
+            .await
     }
 }
 

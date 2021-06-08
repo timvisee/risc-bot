@@ -8,10 +8,11 @@ use diesel::{
     prelude::*,
     result::{Error as DieselError, QueryResult},
 };
-use telegram_bot::types::{ChatId, Message, MessageKind, UserId};
+use telegram_bot::types::{ChatId, Message, MessageKind, MessageOrChannelPost, UserId};
 
-use models::{Chat, ChatUserStats, User};
-use schema::{chat, chat_user_stats, user};
+use crate::models::{Chat, ChatUserStats, User};
+use crate::schema::{chat, chat_user_stats, user};
+use crate::state::{DbPool, DbPooled};
 
 pub struct Stats {
     /// A queue of stats that still needs to be pushed to the database.
@@ -34,6 +35,23 @@ impl Stats {
     /// Increase the total message and edits count for the given user in the given chat.
     /// The update is pushed to the queue, to be pushed to the database periodically.
     /// If the given message kind is not a counted stat, nothing happends.
+    pub fn increase_message_or_channel_post_stats(
+        &self,
+        message: &MessageOrChannelPost,
+        messages: u32,
+        edits: u32,
+    ) {
+        // Ignore channel posts for now
+        let message = match message {
+            MessageOrChannelPost::Message(msg) => msg,
+            MessageOrChannelPost::ChannelPost(_) => return,
+        };
+        self.increase_stats(message, messages, edits);
+    }
+
+    /// Increase the total message and edits count for the given user in the given chat.
+    /// The update is pushed to the queue, to be pushed to the database periodically.
+    /// If the given message kind is not a counted stat, nothing happends.
     pub fn increase_stats(&self, message: &Message, messages: u32, edits: u32) {
         // Update the stats
         if let Some(message_type) = StatsKind::from_message(message) {
@@ -41,9 +59,9 @@ impl Stats {
                 Ok(ref mut queue) => {
                     let entry = queue
                         .entry(message.chat.id())
-                        .or_insert(HashMap::new())
+                        .or_insert_with(HashMap::new)
                         .entry(message.from.id)
-                        .or_insert(HashMap::new())
+                        .or_insert_with(HashMap::new)
                         .entry(message_type)
                         .or_insert((0, 0));
                     entry.0 += messages;
@@ -76,9 +94,14 @@ impl Stats {
     /// Flush the queue with stats to the database.
     /// Items successfully pushed to the database are cleared from the queue.
     /// Any errors while flushing are reported in the console.
-    pub fn flush(&self, connection: &MysqlConnection) {
+    pub fn flush(&self, db: &DbPool) {
         match (self.queue.lock(), self.queue_names.lock()) {
-            (Ok(ref mut chats), Ok(ref mut names)) => Self::flush_chats(chats, names, connection),
+            (Ok(ref mut chats), Ok(ref mut names)) => {
+                let connection = db
+                    .get()
+                    .expect("failed to get database connection from pool");
+                Self::flush_chats(chats, names, &connection);
+            }
             (Err(err), _) => eprintln!(
                 "ERR: failed lock stats queue, unable to flush to database: {}",
                 err
@@ -278,7 +301,7 @@ impl Stats {
     /// Fetch chat stats.
     pub fn fetch_chat_stats(
         &self,
-        connection: &MysqlConnection,
+        connection: DbPooled,
         selected_chat: ChatId,
         selected_user: Option<UserId>,
     ) -> QueryResult<ChatStats> {
@@ -302,7 +325,7 @@ impl Stats {
                     edits,
                 ))
                 .filter(chat_id.eq(selected_chat.to_i64()))
-                .load(connection)?;
+                .load(&connection)?;
 
         // Build a hashmap of user totals, add database and queue stats
         let mut user_totals: HashMap<
@@ -425,7 +448,7 @@ impl Stats {
             .select(created_at)
             .filter(chat_id.eq(selected_chat.to_i64()))
             .order(created_at.asc())
-            .first::<NaiveDateTime>(connection)
+            .first::<NaiveDateTime>(&connection)
             .ok();
 
         // Build the chat stats
@@ -525,6 +548,7 @@ pub enum StatsKind {
     ChatPhoto,
     PinnedMessage,
     Forward,
+    Poll,
 }
 
 impl StatsKind {
@@ -580,6 +604,7 @@ impl StatsKind {
             MessageKind::MigrateToChatId { .. } => None,
             MessageKind::MigrateFromChatId { .. } => None,
             MessageKind::PinnedMessage { .. } => Some(StatsKind::PinnedMessage),
+            MessageKind::Poll { .. } => Some(StatsKind::Poll),
             MessageKind::Unknown { .. } => None,
         }
     }
@@ -605,6 +630,7 @@ impl StatsKind {
             15 => Some(StatsKind::ChatPhoto),
             16 => Some(StatsKind::PinnedMessage),
             17 => Some(StatsKind::Forward),
+            18 => Some(StatsKind::Poll),
             _ => None,
         }
     }
@@ -629,6 +655,7 @@ impl StatsKind {
             StatsKind::ChatPhoto => 15,
             StatsKind::PinnedMessage => 16,
             StatsKind::Forward => 17,
+            StatsKind::Poll => 18,
         }
     }
 
@@ -652,6 +679,7 @@ impl StatsKind {
             StatsKind::ChatPhoto => "changed chat photo",
             StatsKind::PinnedMessage => "pinned",
             StatsKind::Forward => "forward",
+            StatsKind::Poll => "poll",
         }
     }
 }

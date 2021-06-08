@@ -1,5 +1,6 @@
+use async_trait::async_trait;
 use failure::{Error as FailureError, SyncFailure};
-use futures::Future;
+use futures::prelude::*;
 use telegram_bot::{
     prelude::*,
     types::{Message, ParseMode},
@@ -7,17 +8,17 @@ use telegram_bot::{
 };
 
 use super::Action;
-use app::{NAME, VERSION};
-use state::State;
+use crate::app::{NAME, VERSION};
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "risc";
+const CMD: &str = "risc";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = false;
 
 /// The action help.
-const HELP: &'static str = "RISC info";
+const HELP: &str = "RISC info";
 
 pub struct Risc;
 
@@ -27,6 +28,7 @@ impl Risc {
     }
 }
 
+#[async_trait]
 impl Action for Risc {
     fn cmd(&self) -> &'static str {
         CMD
@@ -40,9 +42,9 @@ impl Action for Risc {
         HELP
     }
 
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         // Build a future for sending the response message
-        let future = state
+        state
             .telegram_send(
                 msg.text_reply(format!(
                     "\
@@ -58,11 +60,9 @@ impl Action for Risc {
                 ))
                 .parse_mode(ParseMode::Markdown),
             )
-            .map(|_| ())
-            .map_err(|err| Error::Respond(SyncFailure::new(err)))
-            .from_err();
-
-        Box::new(future)
+            .map_ok(|_| ())
+            .map_err(|err| Error::Respond(SyncFailure::new(err)).into())
+            .await
     }
 }
 

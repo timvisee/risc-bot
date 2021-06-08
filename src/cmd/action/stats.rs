@@ -1,6 +1,7 @@
+use async_trait::async_trait;
 use diesel::result::Error as DieselError;
 use failure::{Error as FailureError, SyncFailure};
-use futures::{future::err, Future};
+use futures::prelude::*;
 use telegram_bot::{
     prelude::*,
     types::{Message, ParseMode},
@@ -8,16 +9,16 @@ use telegram_bot::{
 };
 
 use super::Action;
-use state::State;
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "stats";
+const CMD: &str = "stats";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = false;
 
 /// The action help.
-const HELP: &'static str = "Display message stats";
+const HELP: &str = "Display message stats";
 
 pub struct Stats;
 
@@ -27,6 +28,7 @@ impl Stats {
     }
 }
 
+#[async_trait]
 impl Action for Stats {
     fn cmd(&self) -> &'static str {
         CMD
@@ -40,16 +42,16 @@ impl Action for Stats {
         HELP
     }
 
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         // Fetch the chat message stats
-        let stats =
-            match state
-                .stats()
-                .fetch_chat_stats(state.db(), msg.chat.id(), Some(msg.from.id))
-            {
-                Ok(stats) => stats,
-                Err(e) => return Box::new(err(e.into())),
-            };
+        let stats = match state.stats().fetch_chat_stats(
+            state.db_connection(),
+            msg.chat.id(),
+            Some(msg.from.id),
+        ) {
+            Ok(stats) => stats,
+            Err(e) => return Err(e.into()),
+        };
 
         // Build the chat message
         let mut response = String::from("*Messages (edits):*\n");
@@ -105,17 +107,15 @@ impl Action for Stats {
         }
 
         // Build a message future for sending the response
-        let future = state
+        state
             .telegram_send(
                 msg.text_reply(response)
                     .parse_mode(ParseMode::Markdown)
                     .disable_preview(),
             )
-            .map(|_| ())
-            .map_err(|err| Error::Respond(SyncFailure::new(err)))
-            .from_err();
-
-        Box::new(future)
+            .map_ok(|_| ())
+            .map_err(|err| Error::Respond(SyncFailure::new(err)).into())
+            .await
     }
 }
 

@@ -1,5 +1,4 @@
 use failure::SyncFailure;
-use futures::{future::ok, Future};
 use regex::Regex;
 use telegram_bot::{
     prelude::*,
@@ -7,10 +6,10 @@ use telegram_bot::{
     Error as TelegramError,
 };
 
-use cmd::handler::{matches_cmd, Error as CmdHandlerError, Handler as CmdHandler};
-use executor::isolated;
-use state::State;
-use traits::MessageText;
+use crate::cmd::handler::{matches_cmd, Error as CmdHandlerError, Handler as CmdHandler};
+use crate::executor::isolated;
+use crate::state::State;
+use crate::traits::MessageText;
 
 lazy_static! {
     /// A regex for matching messages that contain a Reddit reference.
@@ -37,56 +36,54 @@ pub struct Handler;
 
 impl Handler {
     /// Handle the given message.
-    pub fn handle(state: &State, msg: Message) -> Box<Future<Item = (), Error = Error>> {
-        match &msg.kind {
-            MessageKind::Text { ref data, .. } => {
-                // Log all incomming text messages
-                println!(
-                    "MSG <{}>@{}: {}",
-                    &msg.from.first_name,
-                    &msg.chat.id(),
-                    data,
-                );
+    pub async fn handle(state: State, msg: Message) -> Result<(), Error> {
+        if let MessageKind::Text { ref data, .. } = &msg.kind {
+            // Log all incomming text messages
+            println!(
+                "MSG <{}>@{}: {}",
+                &msg.from.first_name,
+                &msg.chat.id(),
+                data,
+            );
 
-                // Route the message to the command handler, if it's a command
-                if let Some(cmd) = matches_cmd(data) {
-                    return Box::new(CmdHandler::handle(state, cmd, msg.clone()).from_err());
-                }
-
-                // Handle Reddit messages
-                if let Some(future) = Self::handle_reddit(state, data, &msg) {
-                    return Box::new(future);
-                }
-
-                // Handle sed messages
-                if let Some(future) = Self::handle_sed(state, data, &msg) {
-                    return Box::new(future.from_err());
-                }
-
-                // Handle tr messages
-                if let Some(future) = Self::handle_tr(state, data, &msg) {
-                    return Box::new(future.from_err());
-                }
-
-                // Route private messages
-                match &msg.chat {
-                    MessageChat::Private(..) => return Box::new(Self::handle_private(state, &msg)),
-                    _ => {}
-                }
+            // Route the message to the command handler, if it's a command
+            if let Some(cmd) = matches_cmd(data) {
+                return CmdHandler::handle(state.clone(), cmd, msg.clone())
+                    .await
+                    .map_err(Error::HandleCmd);
             }
-            _ => {}
+
+            // Handle Reddit messages
+            if let Some(future) = Self::handle_reddit(&state, data, &msg).await {
+                return future;
+            }
+
+            // Handle sed messages
+            if let Some(future) = Self::handle_sed(&state, data, &msg).await {
+                return future.map_err(Error::HandleSed);
+            }
+
+            // Handle tr messages
+            if let Some(future) = Self::handle_tr(&state, data, &msg).await {
+                return future.map_err(Error::HandleTr);
+            }
+
+            // Route private messages
+            if let MessageChat::Private(..) = &msg.chat {
+                return Self::handle_private(&state, &msg).await;
+            }
         }
 
-        Box::new(ok(()))
+        Ok(())
     }
 
     /// Handle messages with Reddit references, such as messages containing `/r/rust`.
     /// If the given message does not contain any Reddit Reference, `None` is returned.
-    pub fn handle_reddit(
+    pub async fn handle_reddit(
         state: &State,
         msg_text: &str,
         msg: &Message,
-    ) -> Option<impl Future<Item = (), Error = Error>> {
+    ) -> Option<Result<(), Error>> {
         // Collect all reddits from the message
         let mut reddits: Vec<String> = REDDIT_REGEX
             .captures_iter(msg_text)
@@ -119,6 +116,7 @@ impl Handler {
                         .parse_mode(ParseMode::Markdown)
                         .disable_notification(),
                 )
+                .await
                 .map(|_| ())
                 .map_err(|err| Error::HandleReddit(SyncFailure::new(err))),
         )
@@ -126,11 +124,11 @@ impl Handler {
 
     /// Handle messages with sed syntax, such as: `s/foo/bar/`
     /// If the given message doesn't contain a sed-like command `None` is returned.
-    pub fn handle_sed(
+    pub async fn handle_sed(
         state: &State,
         msg_text: &str,
         msg: &Message,
-    ) -> Option<impl Future<Item = (), Error = SedError>> {
+    ) -> Option<Result<(), SedError>> {
         // Attempt to collect a sed expression from the message, return None if there is none
         let expr: String = match SED_REGEX.captures(msg_text).map(|r| {
             r.get(1)
@@ -157,31 +155,37 @@ impl Handler {
         let state = state.clone();
         let msg = msg.clone();
 
-        // Build the sed future, send the result when done
-        let sed_future = isolated::execute_sync(cmd).map_err(|_| SedError::Evaluate);
-        let sed_future = sed_future.and_then(move |(mut output, status)| {
-            // Prefix an error message on failure
-            if !status.success() {
-                output.insert_str(0, "Failed to evaluate sed expression:\n\n");
-            }
+        // Run sed, gather results
+        let sed = isolated::execute_sync(cmd)
+            .await
+            .map_err(|_| SedError::Evaluate);
+        let (mut output, status) = match sed {
+            Ok(sed) => (sed.0, sed.1),
+            Err(_) => return Some(Err(SedError::Evaluate)),
+        };
 
-            // Send the response
+        // Prefix an error message on failure
+        if !status.success() {
+            output.insert_str(0, "Failed to evaluate sed expression:\n\n");
+        }
+
+        // Send the response
+        Some(
             state
                 .telegram_send(msg.text_reply(&output).disable_notification())
+                .await
                 .map(|_| ())
-                .map_err(|err| SedError::Respond(SyncFailure::new(err)))
-        });
-
-        Some(sed_future)
+                .map_err(|err| SedError::Respond(SyncFailure::new(err))),
+        )
     }
 
     /// Handle messages with tr syntax, such as: `tr a b`
     /// If the given message doesn't contain a tr-like command `None` is returned.
-    pub fn handle_tr(
+    pub async fn handle_tr(
         state: &State,
         msg_text: &str,
         msg: &Message,
-    ) -> Option<impl Future<Item = (), Error = TrError>> {
+    ) -> Option<Result<(), TrError>> {
         // Attempt to collect a tr expression from the message, return None if there is none
         let expr: String = match TR_REGEX.captures(msg_text).map(|r| {
             r.get(1)
@@ -208,26 +212,30 @@ impl Handler {
         let state = state.clone();
         let msg = msg.clone();
 
-        // Build the tr future, send the result when done
-        let tr_future = isolated::execute_sync(cmd).map_err(|_| TrError::Evaluate);
-        let tr_future = tr_future.and_then(move |(mut output, status)| {
-            // Prefix an error message on failure
-            if !status.success() {
-                output.insert_str(0, "Failed to evaluate tr expression:\n\n");
-            }
+        // Run tr, gather results
+        let tr = isolated::execute_sync(cmd).await;
+        let (mut output, status) = match tr {
+            Ok(tr) => (tr.0, tr.1),
+            Err(_) => return Some(Err(TrError::Evaluate)),
+        };
 
-            // Send the response
+        // Prefix an error message on failure
+        if !status.success() {
+            output.insert_str(0, "Failed to evaluate tr expression:\n\n");
+        }
+
+        // Send the response
+        Some(
             state
                 .telegram_send(msg.text_reply(&output).disable_notification())
+                .await
                 .map(|_| ())
-                .map_err(|err| TrError::Respond(SyncFailure::new(err)))
-        });
-
-        Some(tr_future)
+                .map_err(|err| TrError::Respond(SyncFailure::new(err))),
+        )
     }
 
     /// Handle the give private/direct message.
-    pub fn handle_private(state: &State, msg: &Message) -> impl Future<Item = (), Error = Error> {
+    pub async fn handle_private(state: &State, msg: &Message) -> Result<(), Error> {
         // Send a message to the user
         state
             .telegram_send(
@@ -237,6 +245,7 @@ impl Handler {
                 ))
                 .parse_mode(ParseMode::Markdown),
             )
+            .await
             .map(|_| ())
             .map_err(|err| Error::HandlePrivate(SyncFailure::new(err)))
     }

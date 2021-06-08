@@ -1,7 +1,7 @@
 table! {
     chat (telegram_id) {
         telegram_id -> Bigint,
-        title -> Varchar,
+        title -> Nullable<Varchar>,
         created_at -> Datetime,
         updated_at -> Datetime,
     }
@@ -33,4 +33,8 @@ table! {
 joinable!(chat_user_stats -> chat (chat_id));
 joinable!(chat_user_stats -> user (user_id));
 
-allow_tables_to_appear_in_same_query!(chat, chat_user_stats, user,);
+allow_tables_to_appear_in_same_query!(
+    chat,
+    chat_user_stats,
+    user,
+);

@@ -1,5 +1,6 @@
+use async_trait::async_trait;
 use failure::{Error as FailureError, SyncFailure};
-use futures::{future::ok, Future};
+use futures::prelude::*;
 use telegram_bot::{
     prelude::*,
     types::{Message, MessageKind, ParseMode},
@@ -7,16 +8,16 @@ use telegram_bot::{
 };
 
 use super::Action;
-use state::State;
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "echohtml";
+const CMD: &str = "echohtml";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = true;
 
 /// The action help.
-const HELP: &'static str = "Echo user input as HTML";
+const HELP: &str = "Echo user input as HTML";
 
 pub struct EchoHtml;
 
@@ -26,6 +27,7 @@ impl EchoHtml {
     }
 }
 
+#[async_trait]
 impl Action for EchoHtml {
     fn cmd(&self) -> &'static str {
         CMD
@@ -39,28 +41,25 @@ impl Action for EchoHtml {
         HELP
     }
 
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         if let MessageKind::Text { ref data, .. } = &msg.kind {
             // Get the user's input
             // TODO: actually properly fetch the user input
             let input = data
                 .splitn(2, ' ')
-                .skip(1)
-                .next()
+                .nth(1)
                 .map(|cmd| cmd.trim_start())
                 .unwrap_or("")
                 .to_owned();
 
             // Build a future for sending the response message
-            let future = state
+            state
                 .telegram_send(msg.text_reply(input).parse_mode(ParseMode::Html))
-                .map(|_| ())
-                .map_err(|err| Error::Respond(SyncFailure::new(err)))
-                .from_err();
-
-            Box::new(future)
+                .map_ok(|_| ())
+                .map_err(|err| Error::Respond(SyncFailure::new(err)).into())
+                .await
         } else {
-            Box::new(ok(()))
+            Ok(())
         }
     }
 }

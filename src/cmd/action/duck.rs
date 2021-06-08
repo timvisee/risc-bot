@@ -1,27 +1,26 @@
+use async_trait::async_trait;
 use failure::{Error as FailureError, SyncFailure};
-use futures::{future::ok, Future};
-use htmlescape;
+use futures::prelude::*;
 use telegram_bot::{
     prelude::*,
     types::{Message, MessageKind, ParseMode},
     Error as TelegramError,
 };
-use urlencoding;
 
 use super::Action;
-use state::State;
+use crate::state::State;
 
 /// The action command name.
-const CMD: &'static str = "duck";
+const CMD: &str = "duck";
 
 /// Whether the action is hidden.
 const HIDDEN: bool = false;
 
 /// The action help.
-const HELP: &'static str = "Search using DuckDuckGo";
+const HELP: &str = "Search using DuckDuckGo";
 
 /// Base URL, to append the search query to.
-const URL: &'static str = "https://duckduckgo.com/?q=";
+const URL: &str = "https://duckduckgo.com/?q=";
 
 pub struct Duck;
 
@@ -31,6 +30,7 @@ impl Duck {
     }
 }
 
+#[async_trait]
 impl Action for Duck {
     fn cmd(&self) -> &'static str {
         CMD
@@ -44,14 +44,13 @@ impl Action for Duck {
         HELP
     }
 
-    fn invoke(&self, state: &State, msg: &Message) -> Box<Future<Item = (), Error = FailureError>> {
+    async fn invoke(&self, state: State, msg: Message) -> Result<(), FailureError> {
         if let MessageKind::Text { ref data, .. } = &msg.kind {
             // Get the user's input
             // TODO: actually properly fetch the user input
             let input = data
                 .splitn(2, ' ')
-                .skip(1)
-                .next()
+                .nth(1)
                 .map(|cmd| cmd.trim_start())
                 .unwrap_or("")
                 .trim()
@@ -60,13 +59,11 @@ impl Action for Duck {
             // Make sure something was entered
             if input.is_empty() {
                 // Build a message future for sending the response
-                let future = state
+                return state
                     .telegram_send(msg.text_reply("Search using [DuckDuckGo](https://duckduckgo.com/).\n\nPlease provide a search query, such as:\n`/duck Telegram`\n`/duck !w Telegram app`").parse_mode(ParseMode::Markdown).disable_preview())
-                    .map(|_| ())
-                    .map_err(|err| Error::Respond(SyncFailure::new(err)))
-                    .from_err();
-
-                return Box::new(future);
+                    .map_ok(|_| ())
+                    .map_err(|err| Error::Respond(SyncFailure::new(err)).into())
+                    .await;
             }
 
             // Build the search URL, build the response
@@ -78,15 +75,13 @@ impl Action for Duck {
             );
 
             // Build a future for sending the response message
-            let future = state
+            state
                 .telegram_send(msg.text_reply(response).parse_mode(ParseMode::Html))
-                .map(|_| ())
-                .map_err(|err| Error::Respond(SyncFailure::new(err)))
-                .from_err();
-
-            Box::new(future)
+                .map_ok(|_| ())
+                .map_err(|err| Error::Respond(SyncFailure::new(err)).into())
+                .await
         } else {
-            Box::new(ok(()))
+            Ok(())
         }
     }
 }

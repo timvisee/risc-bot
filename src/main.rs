@@ -1,20 +1,9 @@
-extern crate chrono;
 #[macro_use]
 extern crate diesel;
-extern crate dotenv;
 #[macro_use]
 extern crate failure;
-extern crate futures;
-extern crate htmlescape;
-extern crate humansize;
-extern crate humantime;
 #[macro_use]
 extern crate lazy_static;
-extern crate regex;
-extern crate telegram_bot;
-extern crate tokio_core;
-extern crate tokio_signal;
-extern crate urlencoding;
 
 mod app;
 mod cmd;
@@ -30,69 +19,71 @@ mod util;
 use std::time::Duration;
 
 use dotenv::dotenv;
-use futures::{
-    future::{ok, result},
-    Future, Stream,
-};
+use futures::future;
+use futures::prelude::*;
 use telegram_bot::types::UpdateKind;
-use tokio_core::reactor::{Core, Handle, Interval};
-use tokio_signal::ctrl_c;
+use tokio::pin;
+use tokio::runtime::Handle;
+use tokio::signal::ctrl_c;
+use tokio_stream::wrappers::IntervalStream;
 
 use msg::handler::Handler;
 use state::State;
 use util::handle_msg_error;
 
+/// Maximum number of updates handled concurrently.
+const MAX_CONCURRENT_UPDATES: usize = 4;
+
 /// The application entrypoint.
-// TODO: propegate errors upto this function
-fn main() {
+#[tokio::main]
+async fn main() {
     // Load the environment variables file
     dotenv().ok();
 
-    // Build a future reactor
-    let mut core = Core::new().unwrap();
-
     // Initialize the global state
-    let state = State::init(core.handle());
+    let state = State::init(Handle::current());
 
     // Build a signal handling future to quit nicely
-    let signal = ctrl_c()
-        .flatten_stream()
-        .into_future()
-        .inspect(|_| eprintln!("Received CTRL+C signal, preparing to quit..."))
-        .map(|_| ())
-        .map_err(|_| ());
+    let signal = ctrl_c().inspect(|_| eprintln!("Received CTRL+C signal, preparing to quit..."));
+    pin!(signal);
 
     // Build the application, attach signal handling
-    let app = build_application(state.clone(), core.handle())
-        .select(signal)
-        .map_err(|(e, _)| e)
-        .then(|r| {
-            state.stats().flush(state.db());
-            eprintln!("Flushed stats to database");
-            eprintln!("Quitting...");
-            result(r)
-        });
+    let app = build_application(state.clone(), Handle::current());
+    let app = future::select(app, signal).then(|_| {
+        state.stats().flush(state.db());
+        eprintln!("Flushed stats to database");
+        eprintln!("Quitting...");
+        future::ready(())
+    });
 
     // Run the application future in the reactor
-    core.run(app).unwrap();
+    app.await
 }
 
 /// Build the future for running the main application, which is the bot.
-fn build_application(state: State, handle: Handle) -> impl Future<Item = (), Error = ()> {
-    let stats_flusher = build_stats_flusher(state.clone(), handle.clone());
+fn build_application(state: State, handle: Handle) -> impl Future<Output = ()> + Unpin {
+    let stats_flusher = build_stats_flusher(state.clone());
     let telegram = build_telegram_handler(state, handle);
-
-    telegram.join(stats_flusher).map(|_| ())
+    future::select(telegram, stats_flusher).map(|_| ())
 }
 
 /// Build a future for handling Telegram API updates.
-fn build_telegram_handler(state: State, handle: Handle) -> impl Future<Item = (), Error = ()> {
-    state
-        .telegram_client()
-        .stream()
-        .for_each(move |update| {
+fn build_telegram_handler(state: State, handle: Handle) -> impl Future<Output = ()> {
+    state.telegram_client().stream().for_each_concurrent(
+        self::MAX_CONCURRENT_UPDATES,
+        move |update| {
             // Clone the state to get ownership
             let state = state.clone();
+
+            // Unpack update
+            // TODO: return errors?
+            let update = match update {
+                Ok(update) => update,
+                Err(err) => {
+                    eprintln!("ERR: Telegram API updates loop error, ignoring: {}", err);
+                    return future::ready(());
+                }
+            };
 
             // Process messages
             match update.kind {
@@ -101,41 +92,37 @@ fn build_telegram_handler(state: State, handle: Handle) -> impl Future<Item = ()
                     state.stats().increase_message_stats(&message, 1, 0);
 
                     // Build the message handling future, handle any errors
-                    let msg_handler = Handler::handle(&state, message.clone()).or_else(|err| {
-                        handle_msg_error(state, message, err).or_else(|err| {
-                            eprintln!(
-                                "ERR: failed to handle error while handling message: {:?}",
-                                err,
-                            );
-                            ok(())
-                        })
-                    });
+                    let msg_handler =
+                        Handler::handle(state.clone(), message.clone()).or_else(|err| {
+                            handle_msg_error(state, message, err).map_err(|err| {
+                                eprintln!(
+                                    "ERR: failed to handle error while handling message: {:?}",
+                                    err,
+                                );
+                            })
+                        });
 
-                    // Spawn the message handler future on the reactor
+                    // Spawn the message handler future on the runtime
                     handle.spawn(msg_handler);
                 }
                 UpdateKind::EditedMessage(message) => {
-                    state.stats().increase_message_stats(&message, 0, 1)
+                    state.stats().increase_message_stats(&message, 0, 1);
                 }
                 _ => {}
             }
 
-            ok(())
-        })
-        .map_err(|err| {
-            eprintln!("ERR: Telegram API updates loop error, ignoring: {}", err);
-            ()
-        })
+            future::ready(())
+        },
+    )
 }
 
 /// Build a future for handling Telegram API updates.
-// TODO: make the interval time configurable
-fn build_stats_flusher(state: State, handle: Handle) -> impl Future<Item = (), Error = ()> {
-    Interval::new(Duration::from_secs(60), &handle)
-        .expect("failed to build stats flushing interval future")
-        .for_each(move |_| {
-            state.stats().flush(state.db());
-            Ok(())
-        })
-        .map_err(|_| ())
+///
+/// Returned future never completes.
+fn build_stats_flusher(state: State) -> impl Future<Output = ()> {
+    let interval = tokio::time::interval(Duration::from_secs(60));
+    IntervalStream::new(interval).for_each(move |_| {
+        state.stats().flush(state.db());
+        future::ready(())
+    })
 }

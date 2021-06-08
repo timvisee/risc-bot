@@ -1,13 +1,13 @@
 use chrono::NaiveDateTime;
 
-use schema::{chat, chat_user_stats, user};
+use crate::schema::{chat, chat_user_stats, user};
 
 #[derive(Queryable, Identifiable)]
 #[primary_key(telegram_id)]
 #[table_name = "chat"]
 pub struct Chat {
     pub telegram_id: i64,
-    pub title: String,
+    pub title: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
