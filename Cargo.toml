@@ -1,6 +1,6 @@
 [package]
 name = "risc-bot"
-version = "0.0.1"
+version = "0.2.0"
 authors = ["timvisee <timvisee@gmail.com>"]
 edition = "2018"
 
