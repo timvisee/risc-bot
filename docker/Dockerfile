@@ -1,6 +1,6 @@
 FROM ubuntu
 
-LABEL maintainer="Tim Visee <timvisee@gmail.com>"
+LABEL maintainer="Tim Visee <3a4fb3964f@sinenomine.email>"
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
@@ -19,6 +19,8 @@ RUN apt install -yq \
 		dnsutils \
 		fortune \
 		git \
+		gnupg \
+		libgpgme11 \
 		golang \
 		iputils-ping \
 		iputils-tracepath \
@@ -34,11 +36,12 @@ RUN apt install -yq \
 		toilet \
 		translate-shell \
 		vim \
-		wget 
+		wget
 
 # Install Rust, update the cargo package index
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
-RUN cargo install ffsend
+RUN wget "https://github.com/timvisee/ffsend/releases/download/v0.2.72/ffsend-v0.2.72-linux-x64-static" -O /usr/bin/ffsend
+RUN wget "https://github.com/timvisee/prs/releases/download/v0.2.11/prs-gtk3-copy-v0.2.11-linux-x64-static" -O /usr/bin/prs
 
 # Clean apt but keep the package index alive
 RUN apt clean
