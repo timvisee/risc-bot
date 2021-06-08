@@ -40,8 +40,10 @@ RUN apt install -yq \
 
 # Install Rust, update the cargo package index
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
-RUN wget "https://github.com/timvisee/ffsend/releases/download/v0.2.72/ffsend-v0.2.72-linux-x64-static" -O /usr/bin/ffsend
-RUN wget "https://github.com/timvisee/prs/releases/download/v0.2.11/prs-gtk3-copy-v0.2.11-linux-x64-static" -O /usr/bin/prs
+RUN wget "https://github.com/timvisee/ffsend/releases/download/v0.2.72/ffsend-v0.2.72-linux-x64-static" -O /usr/bin/ffsend \
+ && chmod a+x /usr/bin/ffsend
+RUN wget "https://github.com/timvisee/prs/releases/download/v0.2.11/prs-gtk3-copy-v0.2.11-linux-x64-static" -O /usr/bin/prs \
+ && chmod a+x /usr/bin/prs
 
 # Clean apt but keep the package index alive
 RUN apt clean
