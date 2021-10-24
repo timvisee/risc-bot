@@ -15,7 +15,7 @@ lazy_static! {
     /// A regex for matching messages that contain a Reddit reference.
     // TODO: two subreddit names with a space in between aren't matched
     static ref REDDIT_REGEX: Regex = Regex::new(
-        r"(?:^|\s)(?i)/?r/(?P<r>[A-Z0-9_]{1,100})(?:$|\s)",
+        r"(?:^|\s)(?i)/?r/(?P<r>[A-Z0-9_]{2,21})(?:$|\s)",
     ).expect("failed to compile REDDIT_REGEX");
 
     /// A regex for matching messages that contain sed syntax.
