@@ -156,7 +156,7 @@ impl Handler {
         let msg = msg.clone();
 
         // Run sed, gather results
-        let sed = isolated::execute_sync(cmd, None)
+        let sed = isolated::execute_sync(cmd, None, None)
             .await
             .map_err(|_| SedError::Evaluate);
         let (mut output, status) = match sed {
@@ -213,7 +213,7 @@ impl Handler {
         let msg = msg.clone();
 
         // Run tr, gather results
-        let tr = isolated::execute_sync(cmd, None).await;
+        let tr = isolated::execute_sync(cmd, None, None).await;
         let (mut output, status) = match tr {
             Ok(tr) => (tr.0, tr.1),
             Err(_) => return Some(Err(TrError::Evaluate)),

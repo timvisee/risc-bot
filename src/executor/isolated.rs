@@ -11,6 +11,7 @@ use tokio::process::Command;
 pub async fn execute<O>(
     cmd: String,
     reply_text: Option<String>,
+    cmd_text: Option<String>,
     output: O,
 ) -> Result<ExitStatus, Error>
 where
@@ -41,9 +42,12 @@ where
         // .args(&["--device-write-bps", "/:50mb"])
         .args(&["--pids-limit", "64"]);
 
-    // Add reply text variable
+    // Add reply and cmd text variables
     if let Some(text) = reply_text {
         isolated_cmd.args(&["--env", &format!("REPLY={}", text)]);
+    }
+    if let Some(text) = cmd_text {
+        isolated_cmd.args(&["--env", &format!("CMD={}", text)]);
     }
 
     // Select image and binary to run
@@ -62,13 +66,14 @@ where
 pub async fn execute_sync(
     cmd: String,
     reply_text: Option<String>,
+    cmd_text: Option<String>,
 ) -> Result<(String, ExitStatus), Error> {
     // Create a sharable buffer
     let buf = Arc::new(Mutex::new(String::new()));
     let buf_exec = buf.clone();
 
     // Execute the sed command, fill the buffer, stringify the buffer and return
-    let status = execute(cmd, reply_text, move |out| {
+    let status = execute(cmd, reply_text, cmd_text, move |out| {
         buf_exec.lock().unwrap().push_str(&out);
         Ok(())
     })
