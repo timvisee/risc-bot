@@ -55,10 +55,13 @@ impl Exec {
         // Create an mutexed arc for the status
         let status = Arc::new(Mutex::new(status));
 
+        // Grab text from replied to message
+        let reply_text = msg.text();
+
         // Execute the command in an isolated environment, process output and the exit code
         let status_output = status.clone();
         let status_exit = status.clone();
-        let cmd = isolated::execute(cmd, move |line| {
+        let cmd = isolated::execute(cmd, reply_text, move |line| {
             // Append the line to the captured output
             status_output.lock().unwrap().append_line(&line);
             Ok(())
