@@ -24,5 +24,5 @@ urlencoding = "1.0"
 # Use a specific version with patched Telegram bot API
 [dependencies.telegram-bot]
 version = "*"
-git = "https://github.com/telegram-rs/telegram-bot"
-rev = "65ad5cf"
+git = "https://github.com/timvisee/telegram-bot"
+branch = "patch-risc-bot"
